@@ -8,8 +8,8 @@ import java.io.IOException;
 @SuppressWarnings("serial")
 public class MSGraphAuthServlet extends AbsAuthServlet
 {
-	public static String CLIENT_SECRET_FILE_PATH = "/WEB-INF/msgraph_client_secret";
-	public static String CLIENT_ID_FILE_PATH = "/WEB-INF/msgraph_client_id";
+	public static String CLIENT_SECRET_FILE_PATH = "msgraph_client_secret";
+	public static String CLIENT_ID_FILE_PATH = "msgraph_client_id";
 	
 	private static Config CONFIG = null;
 	
@@ -17,31 +17,8 @@ public class MSGraphAuthServlet extends AbsAuthServlet
 	{
 		if (CONFIG == null)
 		{
-			String clientSerets, clientIds;
-			
-			try
-			{
-				clientSerets = Utils
-						.readInputStream(getServletContext()
-								.getResourceAsStream(CLIENT_SECRET_FILE_PATH))
-						.replaceAll("\n", "");
-			}
-			catch (IOException e)
-			{
-				throw new RuntimeException("Client secrets path invalid.");
-			}
-			
-			try
-			{
-				clientIds = Utils
-						.readInputStream(getServletContext()
-								.getResourceAsStream(CLIENT_ID_FILE_PATH))
-						.replaceAll("\n", "");
-			}
-			catch (IOException e)
-			{
-				throw new RuntimeException("Client IDs path invalid.");
-			}
+			String clientSerets = SecretFacade.getSecret(CLIENT_SECRET_FILE_PATH, getServletContext()), 
+					clientIds = SecretFacade.getSecret(CLIENT_ID_FILE_PATH, getServletContext());
 			
 			CONFIG = new Config(clientIds, clientSerets);
 			CONFIG.REDIRECT_PATH = "/microsoft";
@@ -83,7 +60,7 @@ public class MSGraphAuthServlet extends AbsAuthServlet
 			res.append("	{");
 			res.append("		var authInfoStr = JSON.stringify(authInfo);");
 			res.append("		localStorage.setItem('.oneDriveAuthInfo', '{}');"); //setting this storage item means we have a refresh token
-			res.append("		Office.onReady(function () { Office.context.ui.messageParent(authInfoStr);});");
+			res.append("		Office.onReady(function () { Office.context.ui.messageParent(authInfoStr, { targetOrigin: '*' });});"); //TODO Use specific domain (more secure)
 			res.append("	};");
 			res.append("	script.src = 'https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js';");
 			res.append("	head.appendChild(script);");

@@ -2,7 +2,13 @@
  * Copyright (c) 2006-2017, JGraph Ltd
  * Copyright (c) 2006-2017, Gaudenz Alder
  */
-GitHubClient = function(editorUi, authName)
+//Add a closure to hide the class private variables without changing the code a lot
+(function ()
+{
+
+var _token = null;
+
+window.GitHubClient = function(editorUi, authName)
 {
 	DrawioClient.call(this, editorUi, authName || 'ghauth');
 };
@@ -15,12 +21,7 @@ mxUtils.extend(GitHubClient, DrawioClient);
  * LATER: If thumbnails are disabled, make sure to replace the
  * existing thumbnail with the placeholder only once.
  */
-GitHubClient.prototype.clientId = (window.location.hostname == 'test.draw.io') ? '23bc97120b9035515661' : '89c9e4624ca416554489';
-
-/**
- * OAuth scope.
- */
-GitHubClient.prototype.scope = 'repo';
+GitHubClient.prototype.clientId = (window.location.hostname == 'test.draw.io') ? 'Iv1.1218f5567fbc258a' : window.DRAWIO_GITHUB_ID;
 
 /**
  * Default extension for new files.
@@ -30,7 +31,11 @@ GitHubClient.prototype.extension = '.drawio';
 /**
  * Base URL for API calls.
  */
-GitHubClient.prototype.baseUrl = 'https://api.github.com';
+GitHubClient.prototype.baseUrl = DRAWIO_GITHUB_API_URL;
+
+GitHubClient.prototype.baseHostUrl = DRAWIO_GITHUB_URL;
+
+GitHubClient.prototype.redirectUri = window.location.protocol + '//' + window.location.host + '/github2';
 
 /**
  * Maximum file size of the GitHub REST API.
@@ -41,6 +46,11 @@ GitHubClient.prototype.maxFileSize = 1000000 /*1MB*/;
  * Name for the auth token header.
  */
 GitHubClient.prototype.authToken = 'token';
+
+GitHubClient.prototype.setToken = function(token)
+{
+	_token = token;	
+};
 
 /**
  * Authorizes the client, gets the userId and calls <open>.
@@ -56,7 +66,7 @@ GitHubClient.prototype.updateUser = function(success, error, failOnAuth)
 	}), this.ui.timeout);
 	
 	var userReq = new mxXmlRequest(this.baseUrl + '/user', null, 'GET');
-	var temp = this.authToken + ' ' + this.token;
+	var temp = this.authToken + ' ' +  _token;
 	
 	userReq.setRequestHeaders = function(request, params)
 	{
@@ -111,111 +121,125 @@ GitHubClient.prototype.createUser = function(userInfo)
  */
 GitHubClient.prototype.authenticate = function(success, error)
 {
+	var req = new mxXmlRequest(this.redirectUri + '?getState=1', null, 'GET');
+	
+	req.send(mxUtils.bind(this, function(req)
+	{
+		if (req.getStatus() >= 200 && req.getStatus() <= 299)
+		{
+			this.authenticateStep2(req.getText(), success, error);
+		}
+		else if (error != null)
+		{
+			error(req);
+		}
+	}), error);
+};
+
+GitHubClient.prototype.authenticateStep2 = function(state, success, error)
+{
 	if (window.onGitHubCallback == null)
 	{
 		var auth = mxUtils.bind(this, function()
 		{
 			var acceptAuthResponse = true;
 			
-			this.ui.showAuthDialog(this, true, mxUtils.bind(this, function(remember, authSuccess)
+			var authRemembered = this.getPersistentToken(true);
+			
+			if (authRemembered != null)
 			{
-				var win = window.open('https://github.com/login/oauth/authorize?client_id=' +
-					this.clientId + '&scope=' + this.scope, 'ghauth');
+				var req = new mxXmlRequest(this.redirectUri + '?state=' + encodeURIComponent('cId=' + this.clientId + '&domain=' + window.location.hostname + '&token=' + state), null, 'GET'); //To identify which app/domain is used
 				
-				if (win != null)
+				req.send(mxUtils.bind(this, function(req)
 				{
-					window.onGitHubCallback = mxUtils.bind(this, function(code, authWindow)
+					if (req.getStatus() >= 200 && req.getStatus() <= 299)
 					{
-						if (acceptAuthResponse)
+						_token = JSON.parse(req.getText()).access_token;
+						this.setUser(null);
+						success();
+					}
+					else 
+					{
+						this.clearPersistentToken();
+						this.setUser(null);
+						_token = null;
+
+						if (req.getStatus() == 401) // (Unauthorized) [e.g, invalid refresh token]
 						{
-							window.onGitHubCallback = null;
-							acceptAuthResponse = false;
-							
-							if (code == null)
-							{
-								error({message: mxResources.get('accessDenied'), retry: auth});
-							}
-							else
-							{
-								// Gets token for code via servlet
-								var fn = mxUtils.bind(this, function()
-								{
-									var acceptResponse = true;
-									
-									var timeoutThread = window.setTimeout(mxUtils.bind(this, function()
-									{
-										acceptResponse = false;
-										error({code: App.ERROR_TIMEOUT, retry: fn});
-									}), this.ui.timeout);
-									
-									mxUtils.get('/github?client_id=' + this.clientId + '&code=' + code, mxUtils.bind(this, function(authReq)
-									{
-										window.clearTimeout(timeoutThread);
-										
-										if (acceptResponse)
-										{
-											try
-											{
-												if (authReq.getStatus() < 200 || authReq.getStatus() >= 300)
-												{
-													error({message: mxResources.get('cannotLogin')});
-												}
-												else
-												{
-													if (authSuccess != null)
-													{
-														authSuccess();
-													}
-													
-													var res = authReq.getText();
-													this.token = res.substring(res.indexOf('=') + 1, res.indexOf('&'));
-													this.setUser(null);
-													
-													if (remember)
-													{
-														this.setPersistentToken(this.token);
-													}
-													
-													success();
-												}
-											}
-											catch (e)
-											{
-												error(e);
-											}
-											finally
-											{
-												if (authWindow != null)
-												{
-													authWindow.close();
-												}
-											}
-										}
-									}));
-								});
-	
-								fn();
-							}
+							auth();
 						}
-						else if (authWindow != null)
+						else
 						{
-							authWindow.close();
+							error({message: mxResources.get('accessDenied'), retry: auth});
 						}
-					});
-				}
-				else
-				{
-					error({message: mxResources.get('serviceUnavailableOrBlocked'), retry: auth});
-				}
-			}), mxUtils.bind(this, function()
+					}
+				}), error);
+			}
+			else
 			{
-				if (acceptAuthResponse)
+				this.ui.showAuthDialog(this, true, mxUtils.bind(this, function(remember, authSuccess)
 				{
-					window.onGitHubCallback = null;
-					acceptAuthResponse = false;
-					error({message: mxResources.get('accessDenied'), retry: auth});
-				}
-			}));
+					var win = window.open(this.baseHostUrl + '/login/oauth/authorize?client_id=' +
+						this.clientId +  
+						'&state=' + encodeURIComponent('cId=' + this.clientId + //To identify which app/domain is used
+							'&domain=' + window.location.hostname + '&token=' + state), 'ghauth');
+					
+					if (win != null)
+					{
+						window.onGitHubCallback = mxUtils.bind(this, function(newAuthInfo, authWindow)
+						{
+							if (acceptAuthResponse)
+							{
+								window.onGitHubCallback = null;
+								acceptAuthResponse = false;
+								
+								if (newAuthInfo == null)
+								{
+									error({message: mxResources.get('accessDenied'), retry: auth});
+								}
+								else
+								{
+									if (authSuccess != null)
+									{
+										authSuccess();
+									}
+									
+									_token = newAuthInfo.access_token;
+									this.setUser(null);
+									
+									if (remember)
+									{
+										this.setPersistentToken('remembered');
+									}
+									
+									success();
+									
+									if (authWindow != null)
+									{
+										authWindow.close();
+									}
+								}
+							}
+							else if (authWindow != null)
+							{
+								authWindow.close();
+							}
+						});
+					}
+					else
+					{
+						error({message: mxResources.get('serviceUnavailableOrBlocked'), retry: auth});
+					}
+				}), mxUtils.bind(this, function()
+				{
+					if (acceptAuthResponse)
+					{
+						window.onGitHubCallback = null;
+						acceptAuthResponse = false;
+						error({message: mxResources.get('accessDenied'), retry: auth});
+					}
+				}));
+			}
 		});
 		
 		auth();
@@ -251,7 +275,24 @@ GitHubClient.prototype.getErrorMessage = function(req, defaultText)
 /**
  * Authorizes the client, gets the userId and calls <open>.
  */
-GitHubClient.prototype.executeRequest = function(req, success, error, ignoreNotFound)
+GitHubClient.prototype.showAuthorizeDialog = function(retryFn, cancelFn)
+{
+	this.ui.showError(mxResources.get('accessDenied'), mxResources.get('authorizationRequired'),
+		mxResources.get('help'), mxUtils.bind(this, function()
+		{
+			this.ui.openLink('https://www.diagrams.net/blog/single-repository-diagrams');
+		}), retryFn, mxResources.get('authorize'), mxUtils.bind(this, function()
+		{
+			this.ui.openLink((window.location.hostname == 'test.draw.io') ?
+				'https://github.com/apps/diagrams-net-app-test' :
+				'https://github.com/apps/draw-io-app');
+		}), mxResources.get('cancel'), cancelFn, 480, null, false);
+};
+
+/**
+ * Authorizes the client, gets the userId and calls <open>.
+ */
+GitHubClient.prototype.executeRequest = function(req, success, error, ignoreNotFound, returnNotFound)
 {
 	var doExecute = mxUtils.bind(this, function(failOnAuth)
 	{
@@ -263,7 +304,7 @@ GitHubClient.prototype.executeRequest = function(req, success, error, ignoreNotF
 			error({code: App.ERROR_TIMEOUT, retry: fn});
 		}), this.ui.timeout);
 		
-		var temp = this.authToken + ' ' + this.token;
+		var temp = this.authToken + ' ' + _token;
 		
 		req.setRequestHeaders = function(request, params)
 		{
@@ -273,6 +314,22 @@ GitHubClient.prototype.executeRequest = function(req, success, error, ignoreNotF
 		req.send(mxUtils.bind(this, function()
 		{
 			window.clearTimeout(timeoutThread);
+
+			var authorizeApp = mxUtils.bind(this, function()
+			{
+				// Pauses spinner while showing dialog
+				var resume = this.ui.spinner.pause();
+
+				this.showAuthorizeDialog(mxUtils.bind(this, function()
+				{
+					resume();
+					fn();
+				}), mxUtils.bind(this, function()
+				{
+					this.ui.hideDialog();
+					error({name: 'AbortError'});
+				}));
+			});
 			
 			if (acceptResponse)
 			{
@@ -308,22 +365,36 @@ GitHubClient.prototype.executeRequest = function(req, success, error, ignoreNotF
 					try
 					{
 						var temp = JSON.parse(req.getText());
-						
-						if (temp != null && temp.errors != null && temp.errors.length > 0)
+
+						if (temp != null && temp.message == 'Resource not accessible by integration')
 						{
-							tooLarge = temp.errors[0].code == 'too_large';
+							authorizeApp();
+						}
+						else
+						{
+							if (temp != null && temp.errors != null && temp.errors.length > 0)
+							{
+								tooLarge = temp.errors[0].code == 'too_large';
+							}
+
+							error({message: mxResources.get((tooLarge) ? 'drawingTooLarge' : 'forbidden')});
 						}
 					}
 					catch (e)
 					{
-						// ignore
+						error({message: mxResources.get((tooLarge) ? 'drawingTooLarge' : 'forbidden')});
 					}
-					
-					error({message: mxResources.get((tooLarge) ? 'drawingTooLarge' : 'forbidden')});
 				}
 				else if (req.getStatus() === 404)
 				{
-					error({code: req.getStatus(), message: this.getErrorMessage(req, mxResources.get('fileNotFound'))});
+					if (returnNotFound)
+					{
+						error({code: req.getStatus(), message: this.getErrorMessage(req, mxResources.get('fileNotFound'))});
+					}
+					else
+					{
+						authorizeApp();
+					}
 				}
 				else if (req.getStatus() === 409)
 				{
@@ -361,7 +432,7 @@ GitHubClient.prototype.executeRequest = function(req, success, error, ignoreNotF
 		}
 	});
 
-	if (this.token == null)
+	if (_token == null)
 	{
 		this.authenticate(function()
 		{
@@ -385,7 +456,7 @@ GitHubClient.prototype.getLibrary = function(path, success, error)
 /**
  * Checks if the client is authorized and calls the next step.
  */
-GitHubClient.prototype.getSha = function(org, repo, path, ref, success, error)
+GitHubClient.prototype.getSha = function(org, repo, path, ref, success, error, returnNotFound)
 {
 	// Adds random parameter to bypass cache
 	var rnd = '&t=' + new Date().getTime();
@@ -402,7 +473,7 @@ GitHubClient.prototype.getSha = function(org, repo, path, ref, success, error)
 		{
 			error(e);
 		}
-	}), error);
+	}), error, null, returnNotFound);
 };
 
 /**
@@ -424,11 +495,11 @@ GitHubClient.prototype.getFile = function(path, success, error, asLibrary, check
 		/\.pdf$/i.test(path) || (!this.ui.useCanvasForExport && binary)))
 	{
 		// Should never be null
-		if (this.token != null)
+		if (_token != null)
 		{
 			var url = this.baseUrl + '/repos/' + org + '/' + repo +
 				'/contents/' + path + '?ref=' + ref;
-			var headers = {'Authorization': 'token ' + this.token};
+			var headers = {'Authorization': 'token ' + _token};
 			tokens = path.split('/');
 			var name = (tokens.length > 0) ? tokens[tokens.length - 1] : path;
 			this.ui.convertFile(url, name, null, this.extension, success, error, null, headers);
@@ -639,7 +710,7 @@ GitHubClient.prototype.writeFile = function(org, repo, ref, path, message, data,
 		{
 			if (err.code == 404)
 			{
-				err.helpLink = 'https://github.com/settings/connections/applications/' + this.clientId;
+				err.helpLink = this.baseHostUrl + '/settings/connections/applications/' + this.clientId;
 				err.code = null;
 			}
 			
@@ -690,7 +761,7 @@ GitHubClient.prototype.checkExists = function(path, askReplace, fn)
 	}), mxUtils.bind(this, function(err)
 	{
 		fn(true);
-	}), null, true);
+	}), true);
 };
 
 /**
@@ -818,11 +889,20 @@ GitHubClient.prototype.showGitHubDialog = function(showFiles, fn)
 	listItem.style.width = '100%';
 	
 	var dlg = new CustomDialog(this.ui, content, mxUtils.bind(this, function()
-	{
-		fn(org + '/' + repo + '/' + encodeURIComponent(ref) + '/' + path);
-	}));
-	this.ui.showDialog(dlg.container, 420, 360, true, true);
-	
+		{
+			fn(org + '/' + repo + '/' + encodeURIComponent(ref) + '/' + path);
+		}), null, null, 'https://www.diagrams.net/blog/single-repository-diagrams', null, null, null, null,
+		[[mxResources.get('refresh'), mxUtils.bind(this, function()
+		{
+			selectRepo();
+		})], [mxResources.get('authorize'), mxUtils.bind(this, function()
+		{
+			this.ui.openLink((window.location.hostname == 'test.draw.io') ?
+				'https://github.com/apps/diagrams-net-app-test' :
+				'https://github.com/apps/draw-io-app');
+		})]]);
+	this.ui.showDialog(dlg.container, 420, 370, true, true);
+
 	if (showFiles)
 	{
 		dlg.okButton.parentNode.removeChild(dlg.okButton);
@@ -927,7 +1007,7 @@ GitHubClient.prototype.showGitHubDialog = function(showFiles, fn)
 	{
 		if (page == null)
 		{
-			div.innerHTML = '';
+			div.innerText = '';
 			page = 1;
 		}
 		
@@ -1005,7 +1085,7 @@ GitHubClient.prototype.showGitHubDialog = function(showFiles, fn)
 							{
 								var temp = listItem.cloneNode();
 								temp.style.backgroundColor = (gray) ?
-									((uiTheme == 'dark') ? '#000000' : '#eeeeee') : '';
+									((Editor.isDarkMode()) ? '#000000' : '#eeeeee') : '';
 								gray = !gray;
 
 								var typeImg = document.createElement('img');
@@ -1067,7 +1147,7 @@ GitHubClient.prototype.showGitHubDialog = function(showFiles, fn)
 	{
 		if (page == null)
 		{
-			div.innerHTML = '';
+			div.innerText = '';
 			page = 1;
 		}
 		
@@ -1134,7 +1214,7 @@ GitHubClient.prototype.showGitHubDialog = function(showFiles, fn)
 					{
 						var temp = listItem.cloneNode();
 						temp.style.backgroundColor = (idx % 2 == 0) ?
-							((uiTheme == 'dark') ? '#000000' : '#eeeeee') : '';
+							((Editor.isDarkMode()) ? '#000000' : '#eeeeee') : '';
 						
 						temp.appendChild(createLink(branch.name, mxUtils.bind(this, function()
 						{
@@ -1169,7 +1249,7 @@ GitHubClient.prototype.showGitHubDialog = function(showFiles, fn)
 	{
 		if (page == null)
 		{
-			div.innerHTML = '';
+			div.innerText = '';
 			page = 1;
 		}
 		
@@ -1276,7 +1356,7 @@ GitHubClient.prototype.showGitHubDialog = function(showFiles, fn)
 					{
 						var temp = listItem.cloneNode();
 						temp.style.backgroundColor = (idx % 2 == 0) ?
-							((uiTheme == 'dark') ? '#000000' : '#eeeeee') : '';
+							((Editor.isDarkMode()) ? '#000000' : '#eeeeee') : '';
 						
 						temp.appendChild(createLink(repository.full_name, mxUtils.bind(this, function()
 						{
@@ -1317,7 +1397,11 @@ GitHubClient.prototype.showGitHubDialog = function(showFiles, fn)
  */
 GitHubClient.prototype.logout = function()
 {
+	//NOTE: GitHub doesn't provide a refresh token, so no need to clear the token cookie
+	//this.ui.editor.loadUrl(this.redirectUri + '?doLogout=1&state=' + encodeURIComponent('cId=' + this.clientId + '&domain=' + window.location.hostname));
 	this.clearPersistentToken();
 	this.setUser(null);
-	this.token = null;
+	_token = null;
 };
+
+})();

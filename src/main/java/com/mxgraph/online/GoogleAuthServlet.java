@@ -19,8 +19,8 @@ import com.google.gson.JsonElement;
 @SuppressWarnings("serial")
 public class GoogleAuthServlet extends AbsAuthServlet
 {
-	public static String CLIENT_SECRET_FILE_PATH = "/WEB-INF/google_client_secret";
-	public static String CLIENT_ID_FILE_PATH = "/WEB-INF/google_client_id";
+	public static String CLIENT_SECRET_FILE_PATH = "google_client_secret";
+	public static String CLIENT_ID_FILE_PATH = "google_client_id";
 	
 	private static Config CONFIG = null;
 	
@@ -28,31 +28,8 @@ public class GoogleAuthServlet extends AbsAuthServlet
 	{
 		if (CONFIG == null)
 		{
-			String clientSerets, clientIds;
-			
-			try
-			{
-				clientSerets = Utils
-						.readInputStream(getServletContext()
-								.getResourceAsStream(CLIENT_SECRET_FILE_PATH))
-						.replaceAll("\n", "");
-			}
-			catch (IOException e)
-			{
-				throw new RuntimeException("Client secrets path invalid");
-			}
-
-			try
-			{
-				clientIds = Utils
-						.readInputStream(getServletContext()
-								.getResourceAsStream(CLIENT_ID_FILE_PATH))
-						.replaceAll("\n", "");
-			}
-			catch (IOException e)
-			{
-				throw new RuntimeException("Client IDs path invalid");
-			}
+			String clientSerets = SecretFacade.getSecret(CLIENT_SECRET_FILE_PATH, getServletContext()), 
+				clientIds = SecretFacade.getSecret(CLIENT_ID_FILE_PATH, getServletContext());
 			
 			CONFIG = new Config(clientIds, clientSerets);
 			CONFIG.REDIRECT_PATH = "/google";
@@ -61,7 +38,7 @@ public class GoogleAuthServlet extends AbsAuthServlet
 		
 		return CONFIG;
 	}
-	
+
 	public GoogleAuthServlet()
 	{
 		super();

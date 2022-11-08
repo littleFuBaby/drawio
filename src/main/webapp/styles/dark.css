@@ -1,6 +1,9 @@
 html body .geDiagramContainer, html body div.geMenubarContainer, html body td.mxPopupMenuIcon, html body .geFormatContainer, html body div.geMenubarContainer .geStatus:hover {
 	background-color:#2a2a2a;
 }
+html body .mxCellEditor {
+	color: #f0f0f0;
+}
 html body.geEditor div.mxPopupMenu {
 	border:3px solid #505759;
 	background:#2a2a2a;
@@ -17,6 +20,9 @@ html body .geTabContainer {
 	border-top:1px solid #505759;
 	background-color:#2a2a2a;
 }
+html body .geDragPreview {
+	border: 1px dashed #cccccc;
+}
 html body .geMenubarContainer .geItem:active, html .geSidebarContainer button:active {
 	opacity: 0.7;
 }
@@ -27,7 +33,7 @@ html body, html body .geFooterContainer, html body #geFooterItem1, html body tex
 	background:#2a2a2a;
 	color:#cccccc;
 }
-html body a {
+html body .geFooterContainer a, html body .geDiagramContainer a, html body .geStatus a {
 	color:#337ab7;
 }
 html body div.mxRubberband {
@@ -48,8 +54,11 @@ html body .geBaseButton, html .geSidebarContainer button {
 html body .geSidebarTooltip {
 	border:1px solid #505759;
 }
-html body .geSprite, html body .geSocialFooter img, html body .mxPopupMenuItem>img {
+html body .geSprite, html body .geSocialFooter img, html body .mxPopupMenuItem>img, .geAdaptiveAsset {
 	filter:invert(100%);
+}
+.geInverseAdaptiveAsset {
+	filter:none !important;
 }
 html body .geFormatContainer {
 	background-color:#2a2a2a !important;
@@ -77,7 +86,10 @@ html body .geToolbarMenu, html body .geFooterContainer, html body .geFooterConta
 html body .geFooterContainer a {
 	background-color:none;
 }
-html body .geFooterContainer td:hover, html body #geFooterItem1:hover {
+html body .geBigStandardButton {
+	border: 1px solid #505759;
+}
+html body .geFooterContainer td:hover, html body #geFooterItem1:hover, html body .geBigStandardButton:hover {
 	background-color:#000000;
 }
 html body .geSidebarContainer, html body .geDiagramBackdrop {
@@ -129,6 +141,9 @@ html body .geToolbarContainer .geLabel:hover, html body .geToolbarContainer .geL
 html body .geHsplit:hover, html body .geVsplit:hover, html .geSidebarContainer button:active {
 	background-color:#000;
 }
+html body .geToolbarContainer .geButton.geAdaptiveAsset:hover {
+	background-color: #fff;
+}
 html body .geToolbar {
 	border-color:#505759;
 	box-shadow:none;
@@ -153,12 +168,12 @@ html .geEditor ::-webkit-scrollbar-thumb {
 html .geEditor ::-webkit-scrollbar-thumb:hover, .geHsplit:hover, .geVsplit:hover {
 	background-color:#a0a0a0;
 }
-html body .geStatusAlert {
+html body a.geStatus .geStatusAlert {
 	background-color:#a20025;
 	border:1px solid #bd002b;
 	color:#fff !important;
 }
-html body .geStatusAlert:hover {
+html body a.geStatus .geStatusAlert:hover {
 	background-color:#a20025;
 	border-color:#bd002b;
 }
